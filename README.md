@@ -66,6 +66,8 @@ Open `http://your-server:8080` and sign in as `admin` with your `ADMIN_PASSWORD`
 4. **密钥管理 (Keys) → 创建 Key (Create key)**: choose a model family and routing mode, then copy the gateway key.
 5. Point your client at `http://your-server:8080/v1` (OpenAI-compatible) or `http://your-server:8080` (Claude Code), or use **导入客户端 (Import to client)**.
 
+> 💡 *Upstream groups* (provider-side billing groups), *candidate groups* (your pools of channel/upstream-group pairs that restrict routing) and *key groups* (folders for downstream keys with default routes) are three different things. See [usage guide §5.1](docs/usage.md#51-三种分组一览) before your first setup.
+
 The full guide (Chinese) is in **[docs/usage.md](docs/usage.md)**.
 
 ## Deployment
