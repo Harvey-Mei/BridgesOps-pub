@@ -1,0 +1,125 @@
+# Safe local example. Never commit real credentials.
+app:
+  title: BridgeOps (local)
+  timeZone: Asia/Shanghai
+
+server:
+  host: 127.0.0.1
+  port: 8418
+  mode: debug
+  # Only these reverse proxies may supply X-Forwarded-For. Use [] when the
+  # service is exposed directly; loopback covers the recommended local Caddy.
+  trustedProxies: [127.0.0.1, "::1"]
+  baseURL: http://127.0.0.1:8418
+
+# Optional, local-only administrator IP lookup. Use administrator-managed
+# MaxMind-compatible City and ASN .mmdb files stored outside the repository.
+# No client IP is sent to a public geolocation service. Configure both files
+# to distinguish ordinary networks from CDN, proxy, and cloud egress IPs.
+geoIP:
+  enabled: false
+  cityDatabasePath: /var/lib/bridgeops/geoip/GeoLite2-City.mmdb
+  asnDatabasePath: /var/lib/bridgeops/geoip/GeoLite2-ASN.mmdb
+
+database:
+  driver: postgres
+  host: 127.0.0.1
+  port: 5432
+  user: bridgeops
+  password: replace-with-a-local-postgres-password
+  name: bridgeops
+  timeZone: UTC
+  # Use require or verify-full when connecting across hosts.
+  sslMode: disable
+
+# Optional: Redis only caches the management usage summary and charts for 30
+# seconds. It is never authoritative for routing, balances, key material, or
+# billing reconciliation. Leave disabled until PostgreSQL migration is ready.
+redis:
+  enabled: false
+  host: 127.0.0.1
+  port: 6379
+  # Optional explicit namespace. If empty, the server derives one from the
+  # deployment secret and database identity so shared Redis instances stay isolated.
+  namespace: ""
+  username: ""
+  password: ""
+  db: 0
+  tlsEnabled: false
+
+security:
+  appSecret: replace-with-a-local-random-secret
+
+auth:
+  # 公网部署必须启用；启用后管理员控制台和其静态资源只会在认证会话中返回。
+  enabled: false
+  username: admin
+  password: replace-me
+  tokenSecret: replace-with-a-local-random-token-secret
+
+# Process-local request-body memory admission. Byte limits are conservative
+# weighted peak-memory reservations, not raw HTTP Content-Length: ordinary
+# bodies currently reserve 4x + 64 KiB and model rewrites reserve 8x + 256 KiB.
+# Unknown/chunked bodies start with the fixed overhead and grow the lease before
+# retaining each chunk. Startup validates these limits against the smallest
+# finite Go GOMEMLIMIT, current cgroup memory.max, or platform host memory
+# while leaving explicit safety headroom. Permanent size overflow is HTTP 413;
+# current capacity pressure or an expired queue wait is HTTP 503 with
+# Retry-After: 1. These settings are startup-only; changing them through settings
+# apply requires a restart. Omitted queue fields use the defaults below;
+# explicitly set both queue limits to 0 to reject instead of waiting.
+gateway:
+  requestAdmission:
+    maxInFlightRequests: 16
+    maxInFlightBodyBytes: 268435456 # 256 MiB
+    maxInFlightRequestsPerKey: 4
+    maxInFlightBodyBytesPerKey: 100663296 # 96 MiB
+    maxQueuedRequests: 32
+    maxQueuedRequestsPerKey: 8
+    # Maximum time a queued request may wait for a lease. Omit for the 1000 ms
+    # default; an explicit 0 is invalid. Must be 1..60000.
+    maxQueueWaitMilliseconds: 1000
+
+scheduler:
+  # 每轮余额/倍率采集最多同时处理的渠道数。
+  concurrency: 2
+  # 低于此金额的余额上涨只会更新余额快照，不会生成待核对的充值到账项。最小值固定为 0.99。
+  fundingDetectionThreshold: 0.99
+  # 延迟样本不足时使用的延迟得分系数。0.8 表示获得延迟满分的 80%。
+  unknownLatencyScoreFactor: 0.8
+  # 缓存命中部分的输入价格倍率。默认 1 表示直接使用上游倍率；低于 1 时才按缓存读取比例折算。探测、测试、模型检查、内部调用和失败请求均排除。
+  cacheInputPriceMultiplier: 1
+  # 在最新滚动窗口内达到此输入 Token 后，分组自己的缓存比例才作为有效样本；不足时回退到达标分组的输入 Token 加权平均。
+  cachePriceMinInputTokens: 100000000
+  # 从最新正常流量向前累计的输入 Token 窗口；聚合由后台异步刷新，候选热路径只读内存。
+  cachePriceWindowInputTokens: 100000000
+  # 最后一次正常下游使用超过此天数的分组恢复零缓存默认值；从未使用的分组仍可使用整体平均回退。
+  cacheStatsMaxAgeDays: 7
+  routingFailures:
+    responseTimeoutSeconds: 30
+    manualCooldownMinutes: 10
+  # 掺水检测默认关闭；题目、响应和评分只在本机处理，定时与手动检测共享预算和并发限制。
+  modelCheck:
+    enabled: false
+    runsPerDay: 3
+    concurrency: 2
+    maxTargetsPerRun: 12
+    probesPerTarget: 2
+    requestBudget24h: 72
+    timeoutSeconds: 60
+    alertFailures: 2
+    historyDays: 90
+
+proxy:
+  # 仅用于通知、独立打码余额刷新和版本检测；渠道须在网络代理页显式绑定。
+  enabled: false
+
+upstream:
+  timeoutSeconds: 30
+  userAgent: bridgeops-local
+
+log:
+  level: info
+  format: text
+
+# Add provider channels only through the UI or a private local config.

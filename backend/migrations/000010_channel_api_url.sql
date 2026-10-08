@@ -1,0 +1,2 @@
+ALTER TABLE public.channels
+    ADD COLUMN api_url VARCHAR(512) NOT NULL DEFAULT '';

@@ -1,0 +1,95 @@
+BridgeOps Source Available Non-Commercial License
+Version 1.0
+
+Copyright (c) 2026 Harvey-Mei and BridgeOps contributors.
+
+This license applies to BridgeOps source code, documentation, user interface
+assets, and project-owned scripts, except where a file or third-party notice
+states otherwise.
+
+1. Grant of Rights
+
+Subject to the terms below, you may use, copy, modify, inspect, build, and
+redistribute this software for personal, educational, research, evaluation,
+and internal non-commercial purposes.
+
+2. Non-Commercial Restriction
+
+You may not use this software, modified versions of this software, or hosted
+services primarily based on this software for commercial purposes without
+separate written permission from the copyright holder.
+
+Commercial purposes include, but are not limited to:
+
+- selling or licensing the software or a modified version;
+- providing a paid hosted service, paid API service, paid SaaS product, or
+  paid managed service based primarily on this software;
+- bundling the software with a commercial product or service in a way that
+  materially increases the commercial value of that product or service;
+- using the software to provide paid consulting, operations, proxy, routing,
+  resale, or automation services to third parties.
+
+Internal evaluation and non-production testing by a commercial organization
+are permitted. Production use by a commercial organization requires separate
+written permission.
+
+3. Attribution and Source Notice
+
+If you redistribute this software, publish a modified version, deploy a public
+hosted instance, or distribute a product or service based on this software,
+you must keep a clear attribution notice in the software itself and in the
+accompanying documentation.
+
+The notice must be reasonably visible to administrators or users, for example
+in an About page, settings page, sidebar/footer, startup banner, or equivalent
+place. It must include:
+
+- the project name "BridgeOps";
+- a link to the original repository: https://github.com/Harvey-Mei/BridgesOps-pub;
+- a statement that the work is based on or modified from BridgeOps when
+  changes have been made;
+- a link to or bundled copy of this license and THIRD_PARTY_NOTICES.md.
+
+You may not remove copyright, license, attribution, or third-party notices
+from source files, documentation, generated distributions, or user-visible
+software surfaces.
+
+4. Modified Versions
+
+Modified versions must be clearly marked as modified. You are responsible for
+your modifications and for ensuring that they do not misrepresent the original
+project, authors, or contributors.
+
+5. Third-Party Software and Notices
+
+Third-party software, dependencies, and upstream code remain governed by their
+own licenses. This license does not replace or remove notices required by MIT,
+LGPL, Apache, BSD, ISC, MPL, or any other applicable third-party license.
+
+See THIRD_PARTY_NOTICES.md for project-level acknowledgements and known
+third-party notice requirements.
+
+6. No Trademark Grant
+
+This license does not grant permission to use the names, logos, or trademarks
+of BridgeOps, Harvey-Mei, or any third-party project except as required for
+truthful attribution.
+
+7. Disclaimer of Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT.
+
+8. Limitation of Liability
+
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+DAMAGES, OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR
+OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE
+OR OTHER DEALINGS IN THE SOFTWARE.
+
+9. Commercial Licensing
+
+For commercial use, redistribution in a commercial product, paid hosted
+services, or other uses outside this license, contact the copyright holder for
+a separate commercial license.

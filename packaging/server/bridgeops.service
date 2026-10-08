@@ -1,0 +1,51 @@
+[Unit]
+Description=BridgeOps
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/var/lib/bridgeops
+# EnvironmentFile values override Environment values in systemd. Deployment
+# validation must reject GOMEMLIMIT in this database-only environment file.
+EnvironmentFile=/etc/bridgeops/postgres.env
+Environment=GOMEMLIMIT=768MiB
+ExecStart=/usr/local/bin/bridgeops -config /etc/bridgeops/config.yaml
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=2min
+UMask=0077
+StateDirectory=bridgeops
+StateDirectoryMode=0700
+RuntimeDirectory=bridgeops
+RuntimeDirectoryMode=0700
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectClock=true
+ProtectControlGroups=true
+ProtectHome=true
+ProtectHostname=true
+ProtectKernelLogs=true
+ProtectKernelModules=true
+ProtectKernelTunables=true
+ProtectSystem=strict
+ReadWritePaths=/etc/bridgeops
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+SystemCallArchitectures=native
+
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+MemoryHigh=1G
+MemoryMax=1280M
+
+[Install]
+WantedBy=multi-user.target

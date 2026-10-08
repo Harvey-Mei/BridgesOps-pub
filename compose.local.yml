@@ -1,0 +1,71 @@
+name: bridgeops-local-test
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bridgeops
+      POSTGRES_USER: bridgeops
+      POSTGRES_PASSWORD: ${BRIDGEOPS_TEST_POSTGRES_PASSWORD:-local-postgres-password}
+      TZ: UTC
+    command: ["postgres", "-c", "timezone=UTC"]
+    volumes:
+      - ./data/docker-test/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bridgeops -d bridgeops"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      # BuildKit in this host cannot reach proxy.golang.org on its default
+      # bridge network. This affects dependency download only; runtime keeps
+      # the normal Compose network and isolated host data directory.
+      network: ${BRIDGEOPS_BUILD_NETWORK:-host}
+    image: bridgeops:local-test
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: ["-config", "/app/data/config.yaml"]
+    environment:
+      TZ: Asia/Shanghai
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8418
+      SERVER_MODE: release
+      DATABASE_DRIVER: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: bridgeops
+      DATABASE_PASSWORD: ${BRIDGEOPS_TEST_POSTGRES_PASSWORD:-local-postgres-password}
+      DATABASE_NAME: bridgeops
+      DATABASE_TIMEZONE: UTC
+      DATABASE_SSLMODE: disable
+      REDIS_ENABLED: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      LOG_LEVEL: info
+      APP_SECRET: ${BRIDGEOPS_TEST_APP_SECRET:-local-only-bridgeops-test-secret}
+      AUTH_ENABLED: ${BRIDGEOPS_TEST_AUTH_ENABLED:-true}
+      ADMIN_USERNAME: ${BRIDGEOPS_TEST_ADMIN_USERNAME:-local-admin}
+      ADMIN_PASSWORD: ${BRIDGEOPS_TEST_ADMIN_PASSWORD:-local-admin-password}
+      AUTH_TOKEN_SECRET: ${BRIDGEOPS_TEST_AUTH_TOKEN_SECRET:-local-only-auth-token-secret}
+    ports:
+      - "${BRIDGEOPS_BIND_HOST:-127.0.0.1}:${BRIDGEOPS_TEST_PORT:-18418}:8418"
+    volumes:
+      - ./data/docker-test:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://127.0.0.1:8418/healthz >/dev/null"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s

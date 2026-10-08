@@ -1,0 +1,9 @@
+# Replace bridgeops.example.com with your own domain. Caddy obtains and renews
+# the TLS certificate automatically.
+bridgeops.example.com {
+    encode zstd gzip
+
+    handle {
+        reverse_proxy 127.0.0.1:8418
+    }
+}

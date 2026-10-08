@@ -1,0 +1,398 @@
+-- Whole-channel deletion uses an identity/epoch-bound coordinator.  Mutable
+-- claims and immutable evidence intentionally have no FK to channels, groups,
+-- local keys, or the parent intent: the complete cleanup record must survive
+-- the eventual physical channel deletion.
+
+-- Group changes are historical audit records.  Keep their channel_id as the
+-- deleted channel's durable identifier instead of cascading the history away.
+-- One composite FK both rejects live cross-channel references and clears only
+-- the optional group reference when that live group is deleted.  Using one FK
+-- avoids relying on the execution order of separate referential-action
+-- triggers while retaining the historical channel identifier.
+ALTER TABLE public.gateway_upstream_group_changes
+    DROP CONSTRAINT gateway_upstream_group_changes_upstream_group_id_fkey,
+    DROP CONSTRAINT fk_gateway_upstream_group_change_channel,
+    DROP CONSTRAINT fk_gateway_upstream_group_change_group_channel,
+    ADD CONSTRAINT fk_gateway_upstream_group_change_group_channel
+        FOREIGN KEY (upstream_group_id, channel_id)
+        REFERENCES public.gateway_upstream_groups(id, channel_id)
+        ON DELETE SET NULL (upstream_group_id);
+
+CREATE INDEX idx_gateway_upstream_group_changes_group_channel
+    ON public.gateway_upstream_group_changes (upstream_group_id, channel_id)
+    WHERE upstream_group_id IS NOT NULL;
+
+ALTER TABLE public.gateway_channel_deletion_intents
+    ADD COLUMN attempt_count bigint NOT NULL DEFAULT 0,
+    ADD COLUMN last_attempt_at timestamp with time zone,
+    ADD COLUMN next_attempt_at timestamp with time zone,
+    ADD COLUMN finalized_at timestamp with time zone;
+
+UPDATE public.gateway_channel_deletion_intents
+   SET finalized_at = COALESCE(updated_at, created_at, requested_at)
+ WHERE status = 'finalized'
+   AND finalized_at IS NULL;
+
+ALTER TABLE public.gateway_channel_deletion_intents
+    ADD CONSTRAINT chk_gateway_channel_deletion_intent_attempts
+        CHECK (attempt_count >= 0),
+    ADD CONSTRAINT chk_gateway_channel_deletion_intent_retry_times
+        CHECK (
+            (last_attempt_at IS NULL OR isfinite(last_attempt_at))
+            AND (next_attempt_at IS NULL OR isfinite(next_attempt_at))
+            AND (finalized_at IS NULL OR isfinite(finalized_at))
+        ),
+    ADD CONSTRAINT chk_gateway_channel_deletion_intent_finalized_at
+        CHECK ((status = 'finalized') = (finalized_at IS NOT NULL));
+
+CREATE INDEX idx_gateway_channel_deletion_intent_due
+    ON public.gateway_channel_deletion_intents (status, next_attempt_at, updated_at, id)
+    WHERE status IN ('pending_remote_cleanup', 'ready_for_local_finalize');
+
+ALTER TABLE public.gateway_channel_deletion_key_audits
+    ADD COLUMN local_ownership_claim character varying(64) NOT NULL DEFAULT '',
+    ADD CONSTRAINT chk_gateway_channel_deletion_key_audit_local_ownership_claim
+        CHECK (local_ownership_claim = '' OR local_ownership_claim ~ '^[0-9a-f]{64}$');
+
+-- A local key remains present, with its encrypted secret and ownership facts,
+-- until the coordinator has reached a durable result.  This marker makes the
+-- disabled state exact rather than relying on a generic enabled=false value.
+ALTER TABLE public.gateway_upstream_keys
+    ADD COLUMN channel_deletion_intent_id bigint,
+    ADD COLUMN channel_deletion_epoch bigint,
+    ADD COLUMN channel_deletion_identity_revision bigint,
+    ADD COLUMN channel_deletion_upstream_group_id bigint,
+    ADD COLUMN channel_deletion_presence_generation bigint,
+    ADD CONSTRAINT chk_gateway_upstream_key_channel_deletion_marker
+        CHECK (
+            (
+                channel_deletion_intent_id IS NULL
+                AND channel_deletion_epoch IS NULL
+                AND channel_deletion_identity_revision IS NULL
+                AND channel_deletion_upstream_group_id IS NULL
+                AND channel_deletion_presence_generation IS NULL
+            )
+            OR
+            (
+                channel_deletion_intent_id > 0
+                AND channel_deletion_epoch > 0
+                AND channel_deletion_identity_revision > 0
+                AND NOT enabled
+                AND (
+                    (
+                        channel_deletion_upstream_group_id IS NULL
+                        AND channel_deletion_presence_generation IS NULL
+                    )
+                    OR
+                    (
+                        channel_deletion_upstream_group_id > 0
+                        AND channel_deletion_presence_generation > 0
+                    )
+                )
+            )
+        );
+
+CREATE INDEX idx_gateway_upstream_key_channel_deletion_marker
+    ON public.gateway_upstream_keys (
+        channel_id,
+        channel_deletion_epoch,
+        channel_deletion_identity_revision,
+        channel_deletion_intent_id,
+        id
+    )
+    WHERE channel_deletion_intent_id IS NOT NULL;
+
+CREATE TABLE public.gateway_channel_deletion_key_claims (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    intent_id bigint NOT NULL,
+    prepare_audit_id bigint NOT NULL,
+    channel_id bigint NOT NULL,
+    deletion_epoch bigint NOT NULL,
+    channel_identity_revision bigint NOT NULL,
+    local_key_id bigint NOT NULL,
+    key_generation bigint NOT NULL,
+    upstream_group_id bigint,
+    presence_generation bigint,
+    canonical_group_name character varying(128) NOT NULL DEFAULT '',
+    upstream_key_id bigint NOT NULL DEFAULT 0,
+    observed_remote_id bigint NOT NULL DEFAULT 0,
+    upstream_key_name character varying(128) NOT NULL DEFAULT '',
+    ownership_provenance character varying(32) NOT NULL,
+    provisioning boolean NOT NULL DEFAULT false,
+    provisioning_started_at timestamp with time zone,
+    local_ownership_claim character varying(64) NOT NULL DEFAULT '',
+    disposition character varying(32) NOT NULL,
+    status character varying(32) NOT NULL DEFAULT 'pending_verification',
+    claim_epoch bigint NOT NULL DEFAULT 0,
+    claim_digest character(64) NOT NULL,
+    claim_digest_version smallint NOT NULL DEFAULT 1,
+    claimed_at timestamp with time zone,
+    lease_expires_at timestamp with time zone,
+    evidence_digest character varying(64) NOT NULL DEFAULT '',
+    evidence_digest_version smallint,
+    ownership_digest character varying(64) NOT NULL DEFAULT '',
+    ownership_digest_version smallint,
+    observed_fingerprint character varying(64) NOT NULL DEFAULT '',
+    fingerprint_digest_version smallint,
+    inventory_digest character varying(64) NOT NULL DEFAULT '',
+    inventory_digest_version smallint,
+    outcome_reason character varying(64) NOT NULL DEFAULT '',
+    outcome_actor character varying(128) NOT NULL DEFAULT '',
+    outcome_at timestamp with time zone,
+    last_error text NOT NULL DEFAULT '',
+    created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_gateway_channel_deletion_key_claim_local
+        UNIQUE (intent_id, local_key_id),
+    CONSTRAINT uq_gateway_channel_deletion_key_claim_epoch_local
+        UNIQUE (channel_id, deletion_epoch, local_key_id),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_scope
+        CHECK (
+            intent_id > 0
+            AND prepare_audit_id > 0
+            AND channel_id > 0
+            AND deletion_epoch > 0
+            AND channel_identity_revision > 0
+            AND local_key_id > 0
+            AND key_generation >= 0
+            AND upstream_key_id >= 0
+            AND observed_remote_id >= 0
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_group
+        CHECK (
+            (
+                upstream_group_id IS NULL
+                AND presence_generation IS NULL
+                AND canonical_group_name = ''
+            )
+            OR
+            (
+                upstream_group_id > 0
+                AND presence_generation > 0
+                AND canonical_group_name <> ''
+                AND canonical_group_name = lower(btrim(canonical_group_name))
+            )
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_provenance
+        CHECK (ownership_provenance IN ('created', 'provisioning_claim', 'adopted', 'unknown')),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_local_ownership
+        CHECK (
+            (disposition = 'verify_managed_delete' AND local_ownership_claim ~ '^[0-9a-f]{64}$')
+            OR (disposition <> 'verify_managed_delete' AND local_ownership_claim = '')
+            OR (status = 'manual_review_required' AND local_ownership_claim = '')
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_disposition
+        CHECK (
+            (ownership_provenance IN ('created', 'provisioning_claim') AND disposition = 'verify_managed_delete')
+            OR (ownership_provenance = 'adopted' AND disposition = 'retain_adopted')
+            OR (ownership_provenance = 'unknown' AND disposition = 'manual_review_required')
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_status
+        CHECK (status IN (
+            'pending_verification',
+            'processing',
+            'processing_unknown',
+            'delete_confirmed',
+            'initially_absent_confirmed',
+            'retained_adopted',
+            'retained_by_review',
+            'manual_review_required'
+        )),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_epoch
+        CHECK (claim_epoch >= 0 AND claim_epoch < 9223372036854775807),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_digest
+        CHECK (claim_digest ~ '^[0-9a-f]{64}$' AND claim_digest_version > 0),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_lease
+        CHECK (
+            (
+                status = 'processing'
+                AND claim_epoch > 0
+                AND claimed_at IS NOT NULL
+                AND lease_expires_at IS NOT NULL
+                AND isfinite(claimed_at)
+                AND isfinite(lease_expires_at)
+                AND lease_expires_at > claimed_at
+            )
+            OR
+            (status <> 'processing' AND lease_expires_at IS NULL)
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_provisioning_time
+        CHECK (provisioning_started_at IS NULL OR isfinite(provisioning_started_at)),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_digest_pairs
+        CHECK (
+            ((evidence_digest = '' AND evidence_digest_version IS NULL) OR (evidence_digest ~ '^[0-9a-f]{64}$' AND evidence_digest_version > 0))
+            AND ((ownership_digest = '' AND ownership_digest_version IS NULL) OR (ownership_digest ~ '^[0-9a-f]{64}$' AND ownership_digest_version > 0))
+            AND ((observed_fingerprint = '' AND fingerprint_digest_version IS NULL) OR (observed_fingerprint ~ '^[0-9a-f]{64}$' AND fingerprint_digest_version > 0))
+            AND ((inventory_digest = '' AND inventory_digest_version IS NULL) OR (inventory_digest ~ '^[0-9a-f]{64}$' AND inventory_digest_version > 0))
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_claim_outcome_time
+        CHECK (outcome_at IS NULL OR isfinite(outcome_at))
+);
+
+CREATE INDEX idx_gateway_channel_deletion_key_claim_intent
+    ON public.gateway_channel_deletion_key_claims (intent_id, status, id);
+
+CREATE INDEX idx_gateway_channel_deletion_key_claim_recovery
+    ON public.gateway_channel_deletion_key_claims (status, lease_expires_at, updated_at, id)
+    WHERE status IN ('pending_verification', 'processing', 'processing_unknown');
+
+-- Each claim acquisition, takeover, verification, result, or manual-review
+-- requeue appends a self-contained event.  No secret or ciphertext is stored.
+CREATE TABLE public.gateway_channel_deletion_key_evidence (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    key_claim_id bigint NOT NULL,
+    intent_id bigint NOT NULL,
+    channel_id bigint NOT NULL,
+    deletion_epoch bigint NOT NULL,
+    channel_identity_revision bigint NOT NULL,
+    local_key_id bigint NOT NULL,
+    key_generation bigint NOT NULL,
+    upstream_group_id bigint,
+    presence_generation bigint,
+    canonical_group_name character varying(128) NOT NULL DEFAULT '',
+    upstream_key_id bigint NOT NULL DEFAULT 0,
+    observed_remote_id bigint NOT NULL DEFAULT 0,
+    upstream_key_name character varying(128) NOT NULL DEFAULT '',
+    local_ownership_claim character varying(64) NOT NULL DEFAULT '',
+    claim_epoch bigint NOT NULL,
+    event_kind character varying(32) NOT NULL,
+    status_before character varying(32) NOT NULL,
+    status_after character varying(32) NOT NULL,
+    claim_digest character(64) NOT NULL,
+    claim_digest_version smallint NOT NULL,
+    evidence_digest character varying(64) NOT NULL DEFAULT '',
+    evidence_digest_version smallint,
+    ownership_digest character varying(64) NOT NULL DEFAULT '',
+    ownership_digest_version smallint,
+    observed_fingerprint character varying(64) NOT NULL DEFAULT '',
+    fingerprint_digest_version smallint,
+    inventory_digest character varying(64) NOT NULL DEFAULT '',
+    inventory_digest_version smallint,
+    reason character varying(64) NOT NULL DEFAULT '',
+    actor character varying(128) NOT NULL,
+    error_summary text NOT NULL DEFAULT '',
+    observed_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT chk_gateway_channel_deletion_key_evidence_scope
+        CHECK (
+            key_claim_id > 0
+            AND intent_id > 0
+            AND channel_id > 0
+            AND deletion_epoch > 0
+            AND channel_identity_revision > 0
+            AND local_key_id > 0
+            AND key_generation >= 0
+            AND upstream_key_id >= 0
+            AND observed_remote_id >= 0
+            AND claim_epoch > 0
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_evidence_group
+        CHECK (
+            (
+                upstream_group_id IS NULL
+                AND presence_generation IS NULL
+                AND canonical_group_name = ''
+            )
+            OR
+            (
+                upstream_group_id > 0
+                AND presence_generation > 0
+                AND canonical_group_name <> ''
+                AND canonical_group_name = lower(btrim(canonical_group_name))
+            )
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_evidence_event
+        CHECK (event_kind IN ('claim_acquired', 'claim_recovered', 'claim_renewed', 'remote_identity_bound', 'retry_scheduled', 'outcome_recorded', 'manual_review_requeued', 'manual_review_retained')),
+    CONSTRAINT chk_gateway_channel_deletion_key_evidence_actor
+        CHECK (btrim(actor) <> ''),
+    CONSTRAINT chk_gateway_channel_deletion_key_evidence_claim_digest
+        CHECK (claim_digest ~ '^[0-9a-f]{64}$' AND claim_digest_version > 0),
+    CONSTRAINT chk_gateway_channel_deletion_key_evidence_digest_pairs
+        CHECK (
+            ((evidence_digest = '' AND evidence_digest_version IS NULL) OR (evidence_digest ~ '^[0-9a-f]{64}$' AND evidence_digest_version > 0))
+            AND ((ownership_digest = '' AND ownership_digest_version IS NULL) OR (ownership_digest ~ '^[0-9a-f]{64}$' AND ownership_digest_version > 0))
+            AND ((observed_fingerprint = '' AND fingerprint_digest_version IS NULL) OR (observed_fingerprint ~ '^[0-9a-f]{64}$' AND fingerprint_digest_version > 0))
+            AND ((inventory_digest = '' AND inventory_digest_version IS NULL) OR (inventory_digest ~ '^[0-9a-f]{64}$' AND inventory_digest_version > 0))
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_key_evidence_observed_at
+        CHECK (isfinite(observed_at))
+);
+
+CREATE INDEX idx_gateway_channel_deletion_key_evidence_claim
+    ON public.gateway_channel_deletion_key_evidence (key_claim_id, claim_epoch, id);
+
+CREATE INDEX idx_gateway_channel_deletion_key_evidence_intent
+    ON public.gateway_channel_deletion_key_evidence (intent_id, local_key_id, id);
+
+CREATE TABLE public.gateway_channel_deletion_final_audits (
+    id bigint GENERATED BY DEFAULT AS IDENTITY PRIMARY KEY,
+    intent_id bigint NOT NULL,
+    channel_id bigint NOT NULL,
+    deletion_epoch bigint NOT NULL,
+    channel_identity_revision bigint NOT NULL,
+    channel_name_snapshot character varying(128) NOT NULL,
+    channel_type_snapshot character varying(32) NOT NULL,
+    prepared_key_count bigint NOT NULL,
+    delete_confirmed_count bigint NOT NULL,
+    initially_absent_count bigint NOT NULL,
+    retained_adopted_count bigint NOT NULL,
+    retained_by_review_count bigint NOT NULL,
+    key_outcome_digest character(64) NOT NULL,
+    key_outcome_digest_version smallint NOT NULL DEFAULT 1,
+    auth_session_cleanup_status character varying(16) NOT NULL,
+    actor character varying(128) NOT NULL,
+    finalized_at timestamp with time zone NOT NULL,
+    created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT uq_gateway_channel_deletion_final_audit_intent UNIQUE (intent_id),
+    CONSTRAINT uq_gateway_channel_deletion_final_audit_epoch UNIQUE (channel_id, deletion_epoch),
+    CONSTRAINT chk_gateway_channel_deletion_final_audit_scope
+        CHECK (
+            intent_id > 0
+            AND channel_id > 0
+            AND deletion_epoch > 0
+            AND channel_identity_revision > 0
+            AND btrim(channel_name_snapshot) <> ''
+            AND channel_type_snapshot IN ('newapi', 'sub2api')
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_final_audit_counts
+        CHECK (
+            prepared_key_count >= 0
+            AND delete_confirmed_count >= 0
+            AND initially_absent_count >= 0
+            AND retained_adopted_count >= 0
+            AND retained_by_review_count >= 0
+            AND prepared_key_count = delete_confirmed_count + initially_absent_count + retained_adopted_count + retained_by_review_count
+        ),
+    CONSTRAINT chk_gateway_channel_deletion_final_audit_digest
+        CHECK (key_outcome_digest ~ '^[0-9a-f]{64}$' AND key_outcome_digest_version > 0),
+    CONSTRAINT chk_gateway_channel_deletion_final_audit_session
+        CHECK (auth_session_cleanup_status IN ('deleted', 'not_present')),
+    CONSTRAINT chk_gateway_channel_deletion_final_audit_actor
+        CHECK (btrim(actor) <> ''),
+    CONSTRAINT chk_gateway_channel_deletion_final_audit_time
+        CHECK (isfinite(finalized_at))
+);
+
+CREATE INDEX idx_gateway_channel_deletion_final_audit_channel
+    ON public.gateway_channel_deletion_final_audits (channel_id, deletion_epoch, id);
+
+CREATE FUNCTION public.reject_gateway_channel_deletion_lifecycle_audit_mutation()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'gateway channel deletion lifecycle audits are append-only'
+        USING ERRCODE = '23514';
+    RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER trg_gateway_channel_deletion_key_evidence_append_only
+BEFORE UPDATE OR DELETE ON public.gateway_channel_deletion_key_evidence
+FOR EACH ROW
+EXECUTE FUNCTION public.reject_gateway_channel_deletion_lifecycle_audit_mutation();
+
+CREATE TRIGGER trg_gateway_channel_deletion_final_audits_append_only
+BEFORE UPDATE OR DELETE ON public.gateway_channel_deletion_final_audits
+FOR EACH ROW
+EXECUTE FUNCTION public.reject_gateway_channel_deletion_lifecycle_audit_mutation();

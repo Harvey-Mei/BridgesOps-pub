@@ -1,0 +1,77 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+/server
+/bin/
+/tmp/
+/bridgeops
+/bridgeops.exe
+/bridgeops-*.tar
+/bridgeops.deploy.env
+/upstream-ops
+/upstream-ops.exe
+/upstream-ops-*.tar
+/upstream-ops.deploy.env
+/docker-compose.deploy.yml
+
+# Test / coverage
+*.test
+*.out
+coverage.txt
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Env / config
+.env
+.env.local
+config.yaml
+
+
+# Logs
+*.log
+logs/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.turbo/
+frontend/tsconfig.tsbuildinfo
+
+# Embedded frontend dist — 仓库里只保留 .gitkeep 占位，
+# 真实 dist 在 docker build 阶段由 frontend-builder 填充。
+web/dist/*
+!web/dist/.gitkeep
+
+# Script caches
+__pycache__/
+*.py[cod]
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker volumes
+data/
+postgres-data/
+
+# Claude / AI tooling
+.claude/
+CLAUDE.md
+
+# Demo overlay —— 本地演示沙箱，永远不进 git
+Dockerfile.demo
+docker-compose.demo.yml
+Caddyfile.demo
+.env.demo
+deploy-demo.sh
+cmd/seed-demo/
+
+docs/md

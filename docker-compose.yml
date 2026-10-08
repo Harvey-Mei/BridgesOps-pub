@@ -1,0 +1,78 @@
+name: bridgeops
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE:-bridgeops}
+      POSTGRES_USER: ${POSTGRES_USER:-bridgeops}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      TZ: UTC
+    command: ["postgres", "-c", "timezone=UTC"]
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-bridgeops} -d ${POSTGRES_DATABASE:-bridgeops}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "${REDIS_MAXMEMORY:-256mb}", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  app:
+    image: ghcr.io/harvey-mei/bridgesops-pub:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    # 工作目录即数据卷：首次启动时自动生成 /app/data/config.yaml，
+    # 后台“系统设置”保存的参数也会写回这里。
+    working_dir: /app/data
+    environment:
+      TZ: Asia/Shanghai
+      SERVER_HOST: 0.0.0.0
+      SERVER_PORT: 8418
+      DATABASE_DRIVER: postgres
+      DATABASE_HOST: postgres
+      DATABASE_PORT: 5432
+      DATABASE_USER: ${POSTGRES_USER:-bridgeops}
+      DATABASE_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      DATABASE_NAME: ${POSTGRES_DATABASE:-bridgeops}
+      DATABASE_TIMEZONE: UTC
+      DATABASE_SSLMODE: disable
+      REDIS_ENABLED: "true"
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SERVER_MODE: ${SERVER_MODE:-release}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      APP_SECRET: ${APP_SECRET:?APP_SECRET is required, set it in .env}
+      # 默认开启管理员登录。只在可信内网且前面有其他鉴权时才考虑设为 false。
+      AUTH_ENABLED: ${AUTH_ENABLED:-true}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD is required, set it in .env}
+      AUTH_TOKEN_SECRET: ${AUTH_TOKEN_SECRET:-}
+    ports:
+      - "${HTTP_PORT:-8080}:8418"
+    volumes:
+      - bridgeops-data:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O- http://localhost:8418/healthz >/dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+volumes:
+  postgres-data:
+  bridgeops-data:

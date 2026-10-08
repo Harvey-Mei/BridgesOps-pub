@@ -1,0 +1,170 @@
+{
+  "revision": "bridgeops-model-family-catalog-2026-07-v2",
+  "families": [
+    {
+      "code": "codex",
+      "display_name": "GPT / Codex",
+      "aliases": ["gpt", "openai"],
+      "compatible_apps": ["codex"],
+      "icon": "openai",
+      "brand_color": "#000000",
+      "auto_assignable": true,
+      "match_contains": ["gpt", "chatgpt", "codex", "dall-e", "dalle", "text-embedding"],
+      "match_tokens": ["o1", "o3", "o4"]
+    },
+    {
+      "code": "grok",
+      "display_name": "Grok",
+      "aliases": ["xai"],
+      "compatible_apps": ["codex"],
+      "icon": "grok",
+      "brand_color": "#000000",
+      "auto_assignable": true,
+      "match_contains": ["grok", "xai"],
+      "match_tokens": []
+    },
+    {
+      "code": "deepseek",
+      "display_name": "DeepSeek",
+      "aliases": [],
+      "compatible_apps": ["codex"],
+      "icon": "deepseek",
+      "brand_color": "#4D6BFE",
+      "auto_assignable": true,
+      "match_contains": ["deepseek"],
+      "match_tokens": []
+    },
+    {
+      "code": "claude",
+      "display_name": "Claude",
+      "aliases": ["anthropic"],
+      "compatible_apps": ["claude"],
+      "icon": "claude",
+      "brand_color": "#D97757",
+      "auto_assignable": true,
+      "match_contains": ["claude", "anthropic", "sonnet", "opus", "haiku", "kiro", "krio"],
+      "match_tokens": []
+    },
+    {
+      "code": "gemini",
+      "display_name": "Gemini",
+      "aliases": ["google", "palm"],
+      "compatible_apps": ["gemini"],
+      "icon": "gemini",
+      "brand_color": "#4285F4",
+      "auto_assignable": true,
+      "match_contains": ["gemini", "palm"],
+      "match_tokens": []
+    },
+    {
+      "code": "qwen",
+      "display_name": "Qwen",
+      "aliases": ["alibaba"],
+      "compatible_apps": ["codex"],
+      "icon": "qwen",
+      "brand_color": "#615CED",
+      "auto_assignable": true,
+      "match_contains": ["qwen"],
+      "match_tokens": []
+    },
+    {
+      "code": "mistral",
+      "display_name": "Mistral",
+      "aliases": [],
+      "compatible_apps": ["codex"],
+      "icon": "mistral",
+      "brand_color": "#FF7000",
+      "auto_assignable": true,
+      "match_contains": ["mistral"],
+      "match_tokens": []
+    },
+    {
+      "code": "llama",
+      "display_name": "Llama",
+      "aliases": ["meta"],
+      "compatible_apps": ["codex"],
+      "icon": "meta",
+      "brand_color": "#0668E1",
+      "auto_assignable": true,
+      "match_contains": ["llama"],
+      "match_tokens": []
+    },
+    {
+      "code": "glm",
+      "display_name": "GLM",
+      "aliases": ["zhipu", "chatglm"],
+      "compatible_apps": ["codex"],
+      "icon": "zhipu",
+      "brand_color": "#3857F5",
+      "auto_assignable": true,
+      "match_contains": ["glm"],
+      "match_tokens": []
+    },
+    {
+      "code": "minimax",
+      "display_name": "MiniMax",
+      "aliases": [],
+      "compatible_apps": ["codex"],
+      "icon": "minimax",
+      "brand_color": "#F23F5D",
+      "auto_assignable": true,
+      "match_contains": ["minimax"],
+      "match_tokens": []
+    },
+    {
+      "code": "moonshot",
+      "display_name": "Moonshot",
+      "aliases": [],
+      "compatible_apps": ["codex"],
+      "icon": "moonshot",
+      "brand_color": "#000000",
+      "auto_assignable": true,
+      "match_contains": ["moonshot"],
+      "match_tokens": []
+    },
+    {
+      "code": "kimi",
+      "display_name": "Kimi",
+      "aliases": [],
+      "compatible_apps": ["codex"],
+      "icon": "kimi",
+      "brand_color": "#000000",
+      "auto_assignable": true,
+      "match_contains": ["kimi"],
+      "match_tokens": []
+    },
+    {
+      "code": "yi",
+      "display_name": "Yi",
+      "aliases": ["01ai"],
+      "compatible_apps": ["codex"],
+      "icon": "yi",
+      "brand_color": "#000000",
+      "auto_assignable": true,
+      "match_contains": ["yi-"],
+      "match_tokens": []
+    },
+    {
+      "code": "ernie",
+      "display_name": "ERNIE",
+      "aliases": ["baidu"],
+      "compatible_apps": ["codex"],
+      "icon": "baidu",
+      "brand_color": "#2932E1",
+      "auto_assignable": true,
+      "match_contains": ["ernie"],
+      "match_tokens": []
+    },
+    {
+      "code": "other",
+      "display_name": "其他",
+      "aliases": [],
+      "compatible_apps": [],
+      "icon": "generic",
+      "brand_color": "#6B7280",
+      "auto_assignable": false,
+      "match_contains": [],
+      "match_tokens": []
+    }
+  ]
+}
